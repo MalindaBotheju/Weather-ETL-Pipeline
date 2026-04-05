@@ -1,9 +1,4 @@
-# Ignore data files
 *.json
 *.csv
-
-# Ignore databases
 *.db
-
-# Ignore Python cache
 __pycache__/
