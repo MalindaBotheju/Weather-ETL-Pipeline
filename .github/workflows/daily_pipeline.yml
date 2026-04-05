@@ -24,5 +24,7 @@ jobs:
           pip install requests    # 5. Installs the requests library (sqlite3 is built-in!)
 
       - name: Run ETL Pipeline
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          python pipeline.py      # 6. Runs the master script!
+          python pipeline.py

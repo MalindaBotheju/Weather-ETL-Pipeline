@@ -1,18 +1,26 @@
-import sqlite3
+import psycopg2
 import csv
+import os
+from dotenv import load_dotenv
+
+# Load the hidden database URL from the .env file
+load_dotenv()
+DB_URL = os.getenv("DATABASE_URL")
 
 def load_weather_data():
-    csv_file = "clean_weather_2026-04-04.csv" # Ensure date matches your file
-    db_file = "weather_warehouse.db"
-
-    conn = sqlite3.connect(db_file)
+    csv_file = "clean_weather_2026-04-04.csv" # Update to match your CSV date if needed
+    
+    print("Connecting to Supabase Cloud Data Warehouse...")
+    
+    # 1. Connect to PostgreSQL
+    conn = psycopg2.connect(DB_URL)
     cursor = conn.cursor()
 
-    # 1. THE FIX: We added a UNIQUE constraint on City + Date
+    # 2. Create the table in the cloud
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS daily_weather (
-            city TEXT,
-            date TEXT,
+            city VARCHAR(255),
+            date DATE,
             max_temp_celsius REAL,
             min_temp_celsius REAL,
             precipitation_mm REAL,
@@ -21,14 +29,22 @@ def load_weather_data():
         )
     ''')
     
+    print("Table verified. Upserting data to the cloud...")
+
+    # 3. Read the CSV and Upsert into PostgreSQL
     with open(csv_file, "r") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            # 2. THE FIX: INSERT OR REPLACE (Upsert) instead of just INSERT
             cursor.execute('''
-                INSERT OR REPLACE INTO daily_weather 
+                INSERT INTO daily_weather 
                 (city, date, max_temp_celsius, min_temp_celsius, precipitation_mm, max_wind_kmh)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (city, date) 
+                DO UPDATE SET 
+                    max_temp_celsius = EXCLUDED.max_temp_celsius,
+                    min_temp_celsius = EXCLUDED.min_temp_celsius,
+                    precipitation_mm = EXCLUDED.precipitation_mm,
+                    max_wind_kmh = EXCLUDED.max_wind_kmh;
             ''', (
                 row['city'], 
                 row['date'], 
@@ -38,13 +54,17 @@ def load_weather_data():
                 row['max_wind_kmh']
             ))
 
+    # 4. Commit and close
     conn.commit()
-    
-    print("\n--- Current Data in Warehouse ---")
+    print("Data successfully loaded into Supabase!")
+
+    # 5. Prove it worked
+    print("\n--- Current Data in Cloud Warehouse ---")
     cursor.execute("SELECT * FROM daily_weather")
     for record in cursor.fetchall():
         print(record)
 
+    cursor.close()
     conn.close()
 
 if __name__ == "__main__":
